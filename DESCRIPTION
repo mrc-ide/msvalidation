@@ -1,0 +1,34 @@
+Package: msvalidation
+Title: Validation vignettes for malariasimulation
+Version: 0.0.1
+Authors@R: c(
+  person(
+    given = "Giovanni",
+    family = "Charles",
+    role = c('aut', 'cre'),
+    email = 'giovanni.charles@gmail.com'
+  ),
+  person(
+    given = "Imperial College of Science, Technology and Medicine",
+    family = "",
+    role = c('cph'),
+    email = 'giovanni.charles10@imperial.ac.uk'
+  ))
+Description: Builds long running validation vignettes for the malariasimulation model.
+Remotes:
+  mrc-ide/malariasimulation,
+  mrc-ide/malariaEquilibrium
+Imports:
+  malariasimulation,
+  malariaEquilibrium,
+  rmarkdown,
+  reshape2,
+  cowplot,
+  ggplot2,
+  knitr
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.1.1
+VignetteBuilder: knitr
