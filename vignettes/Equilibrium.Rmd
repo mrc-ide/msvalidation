@@ -17,6 +17,7 @@ knitr::opts_chunk$set(
 ```{r setup}
 suppressPackageStartupMessages(library(ggplot2))
 suppressPackageStartupMessages(library(cowplot))
+library(ICDMM)
 ```
 
 # Equilibrium testing
@@ -124,10 +125,60 @@ eq_data <- data.frame(
 eq_data$model <- 'equilibrium'
 ```
 
+And compute some outputs from deterministic-malaria-model...
+
+```{r}
+dmm_params <- malariaEquilibrium::load_parameter_set()
+dmm_params$eta <- eta
+dmm_ages <- 0:999 / 10
+
+dmm_out <= run_model(model = 'odin_model',
+                     time = warm_up + period*year,
+                     age = dumm_ages,
+                     init_EIR = eir,
+                     eta = eta,
+                     country = NULL,
+                     admin2 = NULL)
+
+get_eq <- function(eir) {
+  malariaEquilibrium::human_equilibrium(
+    EIR = eir,
+    ft = 0,
+    p = eq_params,
+    age = eq_ages
+  )
+}
+
+get_equilibrium_values <- function(eq, eir) {
+  u5 <- eq_ages < 5
+  g2l10 <- (eq_ages > 2) & (eq_ages < 10)
+  c(
+    total_m = NA,
+    clinical_incidence = sum(eq$states[, 'inc']) * year,
+    clinical_incidence_0_5 = sum(eq$states[u5, 'inc']) / sum(eq$states[u5, 'prop']) * year,
+    prevalence_2_10 = sum(eq$states[g2l10, 'pos_M']) / sum(eq$states[g2l10, 'prop']),
+    eir = eir
+  )
+}
+
+dmm_data <- data.frame(
+  t(
+    vapply(
+      old_model_runs$eir,
+      function(e) get_equilibrium_values(get_eq(e), e),
+      numeric(5)
+    )
+  )
+)
+
+dmm_data$model <- 'deterministic'
+
+```
+
 We can then compare our outputs to the equilibrium prevalence and incidence curves vs EIR...
 
 ```{r}
-out <- rbind(old_model_runs, eq_data, ms_values)
+out <- rbind(old_model_runs, eq_data, ms_values, dmm_data)
 
 plots <- list(
   ggplot(
