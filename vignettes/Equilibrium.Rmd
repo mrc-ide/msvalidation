@@ -128,49 +128,49 @@ eq_data$model <- 'equilibrium'
 And compute some outputs from deterministic-malaria-model...
 
 ```{r}
-dmm_params <- malariaEquilibrium::load_parameter_set()
-dmm_params$eta <- eta
-dmm_ages <- 0:999 / 10
+#saveRDS(ms_runs,"./ms_runs.rds")
+#saveRDS(ms_values, "./ms_values.rds")
+ms_runs <- readRDS("./ms_runs.rds")
+ms_values <- readRDS("./ms_values.rds")
 
-dmm_out <= run_model(model = 'odin_model',
-                     time = warm_up + period*year,
-                     age = dumm_ages,
+# creating a function for running the odin model given an assigned EIR value
+get_dmm <- function(eir) {
+  run_model(model = 'odin_model',
+                     time = period*year,
+                     age = c(0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 3, 3.5, 4, 4.5, 5, 7.5, 10, 15, 20, 30, 40, 50, 60, 70, 80),
+                     het_brackets = 5,
                      init_EIR = eir,
-                     eta = eta,
-                     country = NULL,
-                     admin2 = NULL)
-
-get_eq <- function(eir) {
-  malariaEquilibrium::human_equilibrium(
-    EIR = eir,
-    ft = 0,
-    p = eq_params,
-    age = eq_ages
-  )
+                     init_ft = 0,
+                     eta = eta)
 }
 
-get_equilibrium_values <- function(eq, eir) {
-  u5 <- eq_ages < 5
-  g2l10 <- (eq_ages > 2) & (eq_ages < 10)
+get_dmm(5)
+
+# creating a function to output CI and Prev values for a given EIR value
+get_dmm_values <- function(eq,eir) {
+  u5 <- eq_ages < 5 # equilibrium model output gives a matrix of values for each age. for DMM we don't need this
+  g2l10 <- (eq_ages > 2) & (eq_ages < 10) # ^ same
   c(
     total_m = NA,
-    clinical_incidence = sum(eq$states[, 'inc']) * year,
-    clinical_incidence_0_5 = sum(eq$states[u5, 'inc']) / sum(eq$states[u5, 'prop']) * year,
-    prevalence_2_10 = sum(eq$states[g2l10, 'pos_M']) / sum(eq$states[g2l10, 'prop']),
+    clinical_incidence = mean(eq$inc) * year, # check and see if DMM outputs daily or yearly CI. probably is daily. taking the mean is correct.
+    clinical_incidence_0_5 = mean(eq$inc05) * year,
+    prevalence_2_10 = mean(eq$prev), # go back to scripts for run_model() and figure out how they calculated inc05. Ettie Unwin worked on this, can ask her
     eir = eir
   )
 }
 
+# loop through functions, output a data frame with CI and Prev values for each EIR value
 dmm_data <- data.frame(
   t(
     vapply(
-      old_model_runs$eir,
-      function(e) get_equilibrium_values(get_eq(e), e),
+      old_model_runs$eir, 
+      function(e) get_dmm_values(get_dmm(e), e),
       numeric(5)
     )
   )
 )
 
+# labeling model outputs
 dmm_data$model <- 'deterministic'
 
 ```
@@ -178,6 +178,7 @@ dmm_data$model <- 'deterministic'
 We can then compare our outputs to the equilibrium prevalence and incidence curves vs EIR...
 
 ```{r}
+# consolidate to a single data frame
 out <- rbind(old_model_runs, eq_data, ms_values, dmm_data)
 
 plots <- list(
