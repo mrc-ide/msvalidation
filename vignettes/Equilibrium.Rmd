@@ -102,7 +102,7 @@ get_eq <- function(eir) {
 }
 
 get_equilibrium_values <- function(eq, eir) {
-  u5 <- eq_ages < 5
+  u5 <- eq_ages < 5 # equilibrium model output gives a matrix of values for each age
   g2l10 <- (eq_ages > 2) & (eq_ages < 10)
   c(
     total_m = NA,
@@ -135,26 +135,25 @@ ms_values <- readRDS("./ms_values.rds")
 
 # creating a function for running the odin model given an assigned EIR value
 get_dmm <- function(eir) {
-  run_model(model = 'odin_model',
+  run_model(model = 'odin_model_ageprev',
                      time = period*year,
-                     age = c(0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 3, 3.5, 4, 4.5, 5, 7.5, 10, 15, 20, 30, 40, 50, 60, 70, 80),
+                     age = c(0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.25, 3.5, 3.75, 4, 4.25, 4.5, 4.75, 5, 7.5, 10, 15, 20, 30, 40, 50, 60, 70, 80),
                      het_brackets = 5,
                      init_EIR = eir,
                      init_ft = 0,
-                     eta = eta)
-}
-
-get_dmm(5)
+                     eta = eta,
+                     agestart = 9, #2
+                     ageend = 22) #7.5
+            
+} 
 
 # creating a function to output CI and Prev values for a given EIR value
 get_dmm_values <- function(eq,eir) {
-  u5 <- eq_ages < 5 # equilibrium model output gives a matrix of values for each age. for DMM we don't need this
-  g2l10 <- (eq_ages > 2) & (eq_ages < 10) # ^ same
   c(
     total_m = NA,
-    clinical_incidence = mean(eq$inc) * year, # check and see if DMM outputs daily or yearly CI. probably is daily. taking the mean is correct.
-    clinical_incidence_0_5 = mean(eq$inc05) * year,
-    prevalence_2_10 = mean(eq$prev), # go back to scripts for run_model() and figure out how they calculated inc05. Ettie Unwin worked on this, can ask her
+    clinical_incidence = mean(eq$inc) * year, # DMM outputs daily CI
+    clinical_incidence_0_5 = mean(eq$inc05) * year, 
+    prevalence_2_10 = mean(eq$prev_agegroup), # prev output is for ages
     eir = eir
   )
 }
