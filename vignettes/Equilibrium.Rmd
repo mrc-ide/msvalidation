@@ -1,5 +1,5 @@
 ---
-title: "Validation"
+title: "Validation of IBM"
 output: rmarkdown::html_vignette
 vignette: >
   %\VignetteIndexEntry{Validation}
@@ -22,9 +22,9 @@ library(ICDMM)
 
 # Equilibrium testing
 
-This vignette demonstrates that the IBM is consistent with the [equilibrium solution](https://github.com/mrc-ide/malariaEquilibrium). And the legacy IBM
+This vignette demonstrates that the new individual-based model (IBM) run through 'malariasimulation' is consistent with the [equilibrium solution](https://github.com/mrc-ide/malariaEquilibrium), legacy IBM, and [compartmental malaria model](https://github.com/mrc-ide/deterministic-malaria-model).
 
-We can load some runs from the legacy model and store the EIRs for comparison
+We can load some runs from the legacy model and store the EIRs for comparison.
 
 ```{r}
 old_model_runs <- readRDS(
@@ -34,7 +34,7 @@ old_model_runs$model <- 'legacy'
 eir <- old_model_runs$eir
 ```
 
-Let's start by running the simulation for a range of EIRs:
+Let's start by running the malariasimulation for a range of EIRs:
 
 ```{r}
 year <- 365
@@ -48,41 +48,45 @@ fillna <- function(x, value) {
   x
 }
 
-get_ms_runs <- function(eir) {
-  params <- malariasimulation::get_parameters(list(
-    human_population = population,
-    clinical_incidence_rendering_min_ages = 0,
-    clinical_incidence_rendering_max_ages = 5 * year,
-    individual_mosquitoes = FALSE,
-    n_heterogeneity_groups = 5,
-    average_age = 1 / eta
-  ))
-  params <- malariasimulation::set_equilibrium(params, eir)
-  malariasimulation::run_simulation(warm_up + period * year, params)
-}
+# get_ms_runs <- function(eir) {
+#   params <- malariasimulation::get_parameters(list(
+#     human_population = population,
+#     clinical_incidence_rendering_min_ages = 0,
+#     clinical_incidence_rendering_max_ages = 5 * year,
+#     individual_mosquitoes = FALSE,
+#     n_heterogeneity_groups = 5,
+#     average_age = 1 / eta
+#   ))
+#   params <- malariasimulation::set_equilibrium(params, eir)
+#   malariasimulation::run_simulation(warm_up + period * year, params)
+# }
+# 
+# get_ms_values <- function(run) {
+#   output <- tail(run, period * year)
+#   c(
+#     total_m = mean(output$total_M) / population,
+#     clinical_incidence = mean(fillna(output$clin_inc_0_36500, 0)) * year,
+#     clinical_incidence_0_5 = mean(fillna(output$clin_inc_0_1825, 0)) * year,
+#     prevalence_2_10 = mean(output$pv_730_3650),
+#     eir = mean(output$EIR) * year
+#   )
+# }
+# 
+# ms_runs <- lapply(eir, get_ms_runs)
+# ms_values <- data.frame(
+#   t(
+#     vapply(
+#       ms_runs,
+#       get_ms_values,
+#       numeric(5)
+#     )
+#   )
+# )
+# ms_values$model <- 'malariasimulation'
 
-get_ms_values <- function(run) {
-  output <- tail(run, period * year)
-  c(
-    total_m = mean(output$total_M) / population,
-    clinical_incidence = mean(fillna(output$clin_inc_0_36500, 0)) * year,
-    clinical_incidence_0_5 = mean(fillna(output$clin_inc_0_1825, 0)) * year,
-    prevalence_2_10 = mean(output$pv_730_3650),
-    eir = mean(output$EIR) * year
-  )
-}
-
-ms_runs <- lapply(eir, get_ms_runs)
-ms_values <- data.frame(
-  t(
-    vapply(
-      ms_runs,
-      get_ms_values,
-      numeric(5)
-    )
-  )
-)
-ms_values$model <- 'malariasimulation'
+# saving malariasimulation runs for future ref
+#saveRDS(ms_runs,"./inst/ms_runs.rds")
+#saveRDS(ms_values, "./inst/ms_values.rds")
 ```
 
 And compute some outputs from malariaEquilibrium...
@@ -128,10 +132,8 @@ eq_data$model <- 'equilibrium'
 And compute some outputs from deterministic-malaria-model...
 
 ```{r}
-#saveRDS(ms_runs,"./ms_runs.rds")
-#saveRDS(ms_values, "./ms_values.rds")
-ms_runs <- readRDS("./ms_runs.rds")
-ms_values <- readRDS("./ms_values.rds")
+ms_runs <- readRDS("../inst/ms_runs.rds")
+ms_values <- readRDS("../inst/ms_values.rds")
 
 # creating a function for running the odin model given an assigned EIR value
 get_dmm <- function(eir) {
@@ -174,12 +176,13 @@ dmm_data$model <- 'deterministic'
 
 ```
 
-We can then compare our outputs to the equilibrium prevalence and incidence curves vs EIR...
+We can then compare our malariasimulation outputs to the equilibrium prevalence and incidence curves by EIR:
 
-```{r}
+```{r, fig.height = 7, fig.width = 7}
 # consolidate to a single data frame
 out <- rbind(old_model_runs, eq_data, ms_values, dmm_data)
 
+# plot
 plots <- list(
   ggplot(
     out,
@@ -206,7 +209,7 @@ plot_grid(plotlist = plots)
 
 We can then look at the expected state counts for a medium EIR:
 
-```{r, fig.height = 12}
+```{r, fig.height = 12, fig.width = 7}
 agreement_plot <- function(output, eq, title='Agreement') {
   title <- ggdraw() + 
     draw_label(
@@ -236,6 +239,7 @@ agreement_plot <- function(output, eq, title='Agreement') {
   ))
 }
 
+# plotting 
 agreement_plot(
   ms_runs[[5]],
   get_eq(eir[[5]]),
