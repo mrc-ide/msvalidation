@@ -94,20 +94,20 @@ And compute some outputs from malariaEquilibrium...
 ```{r}
 eq_params <- malariaEquilibrium::load_parameter_set()
 eq_params$eta <- eta
-eq_ages <- 0:999 / 10
+init_age <- c(seq(0,2,by=0.25),seq(2.5,6,by=0.5),seq(7,15,by=1),17.5,20,seq(25,100,by=5))
 
 get_eq <- function(eir) {
   malariaEquilibrium::human_equilibrium(
     EIR = eir,
     ft = 0,
     p = eq_params,
-    age = eq_ages
+    age = init_age
   )
 }
 
 get_equilibrium_values <- function(eq, eir) {
-  u5 <- eq_ages < 5 # equilibrium model output gives a matrix of values for each age
-  g2l10 <- (eq_ages > 2) & (eq_ages < 10)
+  u5 <- init_age < 5 # equilibrium model output gives a matrix of values for each age
+  g2l10 <- (init_age >= 2) & (init_age < 10)
   c(
     total_m = NA,
     clinical_incidence = sum(eq$states[, 'inc']) * year,
@@ -137,15 +137,16 @@ ms_values <- readRDS("../inst/ms_values.rds")
 
 # creating a function for running the odin model given an assigned EIR value
 get_dmm <- function(eir) {
-  run_model(model = 'odin_model_ageprev',
+  run_model_m_immunity(model = 'odin_model_m_immunity',
                      time = period*year,
-                     age = c(0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.25, 3.5, 3.75, 4, 4.25, 4.5, 4.75, 5, 7.5, 10, 15, 20, 30, 40, 50, 60, 70, 80),
+                     age = init_age,
+                     #age = c(0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.25, 3.5, 3.75, 4, 4.25, 4.5, 4.75, 5, 7.5, 10, 15, 20, 30, 40, 50, 60, 70, 80),
                      het_brackets = 5,
                      init_EIR = eir,
                      init_ft = 0,
                      eta = eta,
                      agestart = 9, #2
-                     ageend = 22) #7.5
+                     ageend = 20) #22=7.5
             
 } 
 
@@ -178,7 +179,7 @@ dmm_data$model <- 'deterministic'
 
 We can then compare our malariasimulation outputs to the equilibrium prevalence and incidence curves by EIR:
 
-```{r, fig.height = 7, fig.width = 7}
+```{r, fig.height = 5, fig.width = 7}
 # consolidate to a single data frame
 out <- rbind(old_model_runs, eq_data, ms_values, dmm_data)
 
