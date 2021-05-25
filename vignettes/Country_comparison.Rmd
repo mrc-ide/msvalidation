@@ -1,0 +1,166 @@
+---
+title: "Country-comparison"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Validation}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+# Set-up
+
+Let's begin by installing the libraries **mlgts** (old model) and **malariasimulation** (new model).
+
+```{r setup}
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(cowplot))
+library(mlgts)
+
+# if mlgts has not been previously installed, see the directions in the DIDE drive: /malaria_model_compare/comparisons_getting_started.R
+knitr::opts_knit$set(root.dir="I:/malaria_model_compare")
+source("./R/run_site.R")
+
+# Load all site file data (do not share)
+all_sites <- readRDS("./data/GTS2020_sites_fitted.RDS")
+```
+
+# Old model
+
+To run the old model under generic settings, we can transform country-specific values: 
+
+1. Set exponential demography
+2. Set no population growth
+3. Set no resistance
+4. Set NULL location (no seasonality)
+
+```{r}
+setwd("I:/malaria_model_compare")
+# Get exponential demography
+generic_demog <- read.table("data/exp_demog.txt")
+colnames(generic_demog) <- colnames(all_sites$demog[[1]])
+replace_demog <- function(x){
+  generic_demog
+}
+
+# No population growth
+standard_pop <- function(x){
+  x$p = 1
+  return(x)
+}
+
+# No resistance
+standard_resistance <- function(x){
+  x$resistance = 0
+  return(x[1:20,])
+}
+
+# No seasonality
+null_seasonality <- function(x){
+  x$seasonality[[1]][,1:7] = 1
+  return(x[1:20,])
+}
+
+# No interventions
+null_interventions <- function(x){
+  x$interventions[[1]][2:14] = 0
+  return(x[1:20,])
+}
+
+# standard vectors
+standard_vectors <- function(x){
+  x$vectors[[1]][1] = 1
+  x$vectors[[1]][2:3] = 0
+  return(x[1:20,])
+}
+
+
+# Choose a single site and modify to null values to test
+test_site <- all_sites[1, ] %>%
+  # Alter the population, demography and resistance
+  mutate(pop = purrr::map(pop, standard_pop),
+         demog = purrr::map(demog, replace_demog),
+         resistance = purrr::map(resistance, standard_resistance),
+         vectors = purrr::map(vectors, standard_vectors),
+         seasonality = purrr:map(seasonality, null_seasonality),
+         interventions = purrr:map(interventions, null_interventions),
+         total_M = 1000,
+         num_runs = 1)
+
+# Run
+run_test <- run_site(test_site) 
+
+# Visualise output
+inc_plots <- ggplot(run_test) + 
+  geom_line(aes(x = t, y = clin_inc_all, col = factor(num_runs))) +
+  geom_line(aes(x = t, y = clin_inc_all_smooth, col = factor(num_runs)), lty = 2) +
+  ylab("Clinical incidence all") +
+  xlab("Time") + 
+  theme_bw()
+
+prev_plots <- ggplot(run_test) + 
+  geom_line(aes(x = t, y = prev_2_10, col = factor(num_runs))) +
+  geom_line(aes(x = t, y = prev_2_10_smooth, col = factor(num_runs)), lty = 2) +
+  ylab("Prevalence 2-10") +
+  xlab("Time") + 
+  theme_bw()
+
+
+
+```
+
+# New model
+
+```{r}
+year <- 365
+sim_length <- 20 * year
+human_population <- 1000
+simparams <- get_parameters(list(human_population = human_population))
+
+params <- malariasimulation::get_parameters(
+    human_population = population,
+    clinical_incidence_rendering_min_ages = 0,
+    clinical_incidence_rendering_max_ages = 5 * year,
+    individual_mosquitoes = FALSE,
+    n_heterogeneity_groups = 5,
+    average_age = 1 / eta
+)
+
+params <- malariasimulation::set_equilibrium(params, eir)
+
+malariasimulation::run_simulation(period*year, params)
+
+
+    total_m = mean(output$total_M) / population,
+    clinical_incidence = mean(fillna(output$clin_inc_0_36500, 0)) * year,
+    clinical_incidence_0_5 = mean(fillna(output$clin_inc_0_1825, 0)) * year,
+    prevalence_2_10 = mean(output$pv_730_3650),
+
+
+```
+
+# Comparison
+
+Now try turning interventions on/off one at a time: 
+
+* treatment
+* bednets
+* IRS
+* SMC
+* RTS,S
+
+We will assess changes in prevalence and cumulative incidence for the whole population and for children (prev 2-10 years, CI 0-5 years)
+
+* new model with individual mosquitoes turned on and off
+
+```{r}
+simparams <- set_drugs(simparams, list(AL_params, DHA_PQP_params))
+template$interventions[[1]]$smc <- 0 # etc.
+```
+
