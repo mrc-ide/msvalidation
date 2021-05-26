@@ -22,9 +22,11 @@ Let's begin by installing the libraries **mlgts** (old model) and **malariasimul
 suppressPackageStartupMessages(library(tidyverse))
 suppressPackageStartupMessages(library(cowplot))
 library(mlgts)
+library(malariasimulation)
 
 # if mlgts has not been previously installed, see the directions in the DIDE drive: /malaria_model_compare/comparisons_getting_started.R
 knitr::opts_knit$set(root.dir="I:/malaria_model_compare")
+setwd("I:/malaria_model_compare")
 source("./R/run_site.R")
 
 # Load all site file data (do not share)
@@ -58,60 +60,58 @@ standard_pop <- function(x){
 # No resistance
 standard_resistance <- function(x){
   x$resistance = 0
-  return(x[1:20,])
+  return(x[1:18,])
 }
 
 # No seasonality
 null_seasonality <- function(x){
-  x$seasonality[[1]][,1:7] = 1
-  return(x[1:20,])
+  x[,1] = 1
+  x[,2:7] = 0
+  return(x)
 }
 
 # No interventions
 null_interventions <- function(x){
-  x$interventions[[1]][2:14] = 0
-  return(x[1:20,])
+  x[,c(2:4,6,8:14)] = 0
+  return(x)
 }
 
 # standard vectors
 standard_vectors <- function(x){
-  x$vectors[[1]][1] = 1
-  x$vectors[[1]][2:3] = 0
-  return(x[1:20,])
+  x[,1] = 1
+  x[,2:3] = 0
+  return(x)
 }
-
 
 # Choose a single site and modify to null values to test
 test_site <- all_sites[1, ] %>%
-  # Alter the population, demography and resistance
+  # Alter the population, demography, resistance, etc.
   mutate(pop = purrr::map(pop, standard_pop),
          demog = purrr::map(demog, replace_demog),
          resistance = purrr::map(resistance, standard_resistance),
          vectors = purrr::map(vectors, standard_vectors),
-         seasonality = purrr:map(seasonality, null_seasonality),
-         interventions = purrr:map(interventions, null_interventions),
-         total_M = 1000,
+         seasonality = purrr::map(seasonality, null_seasonality),
+         interventions = purrr::map(interventions, null_interventions),
+         total_M = 10,
          num_runs = 1)
 
 # Run
-run_test <- run_site(test_site) 
+run_test <- purrr::pmap(test_site, run_site) %>% bind_rows()
 
 # Visualise output
 inc_plots <- ggplot(run_test) + 
   geom_line(aes(x = t, y = clin_inc_all, col = factor(num_runs))) +
   geom_line(aes(x = t, y = clin_inc_all_smooth, col = factor(num_runs)), lty = 2) +
-  ylab("Clinical incidence all") +
-  xlab("Time") + 
+  labs(x="Time",y="Clinical incidence all",col="Number of runs") +
   theme_bw()
 
 prev_plots <- ggplot(run_test) + 
-  geom_line(aes(x = t, y = prev_2_10, col = factor(num_runs))) +
-  geom_line(aes(x = t, y = prev_2_10_smooth, col = factor(num_runs)), lty = 2) +
-  ylab("Prevalence 2-10") +
-  xlab("Time") + 
+  geom_line(aes(x = t, y = prev_2_10)) +
+  geom_line(aes(x = t, y = prev_2_10_smooth), lty = 2) +
+  labs(x="Time",y="Prevalence 2-10") +
   theme_bw()
 
-
+plot_grid(inc_plots,prev_plots)
 
 ```
 
@@ -119,29 +119,36 @@ prev_plots <- ggplot(run_test) +
 
 ```{r}
 year <- 365
-sim_length <- 20 * year
-human_population <- 1000
-simparams <- get_parameters(list(human_population = human_population))
+sim_length <- 19 * year
+population <- 1000
 
 params <- malariasimulation::get_parameters(
+  list(
     human_population = population,
-    clinical_incidence_rendering_min_ages = 0,
-    clinical_incidence_rendering_max_ages = 5 * year,
     individual_mosquitoes = FALSE,
     n_heterogeneity_groups = 5,
-    average_age = 1 / eta
+    clinical_incidence_rendering_min_ages = 0,
+    clinical_incidence_rendering_max_ages = 5 * year,
+    model_seasonality = F
+  )
 )
 
-params <- malariasimulation::set_equilibrium(params, eir)
+params <- malariasimulation::set_equilibrium(params, init_EIR=10)
 
-malariasimulation::run_simulation(period*year, params)
+output <- malariasimulation::run_simulation(sim_length, params)
 
+# Visualise output
+inc_plots <- ggplot(output) + 
+  geom_line(aes(x = timestep, y = clin_inc_0_1825)) +
+  labs(x="Time",y="Clinical incidence 0-5") +
+  theme_bw()
 
-    total_m = mean(output$total_M) / population,
-    clinical_incidence = mean(fillna(output$clin_inc_0_36500, 0)) * year,
-    clinical_incidence_0_5 = mean(fillna(output$clin_inc_0_1825, 0)) * year,
-    prevalence_2_10 = mean(output$pv_730_3650),
+prev_plots <- ggplot(output) + 
+  geom_line(aes(x = timestep, y = pv_730_3650)) +
+  labs(x="Time",y="Prevalence 2-10") +
+  theme_bw()
 
+plot_grid(inc_plots,prev_plots)
 
 ```
 
@@ -159,8 +166,49 @@ We will assess changes in prevalence and cumulative incidence for the whole popu
 
 * new model with individual mosquitoes turned on and off
 
-```{r}
-simparams <- set_drugs(simparams, list(AL_params, DHA_PQP_params))
-template$interventions[[1]]$smc <- 0 # etc.
+```{r, message=FALSE}
+#simparams <- set_drugs(simparams, list(AL_params, DHA_PQP_params))
+#template$interventions[[1]]$smc <- 0 # etc.
+
+# Treatment
+# old
+test_site <- test_site %>%
+  mutate(interventions = purrr::map(interventions, null_interventions))
+
+output1 <- purrr::pmap(test_site, run_site) %>% bind_rows() %>% mutate(model="mlgts")
+
+# new
+params <- malariasimulation::get_parameters(
+  list(
+    human_population = population,
+    individual_mosquitoes = FALSE,
+    n_heterogeneity_groups = 5,
+    clinical_incidence_rendering_min_ages = 0,
+    clinical_incidence_rendering_max_ages = 5 * year,
+    model_seasonality = F
+  )
+)
+params <- malariasimulation::set_equilibrium(params, init_EIR=10)
+output2 <- malariasimulation::run_simulation(sim_length, params) %>% 
+  mutate(t=timestep/365+2000,
+         prev_2_10=pv_730_3650,
+         clin_inc_0_5=clin_inc_0_1825,
+         model="malariasimulation")
+
+output <- full_join(output1,output2) %>%
+  dplyr::select(t, prev_2_10, clin_inc_0_5, model)
+
+# Plot
+inc_plots <- ggplot(output) + 
+  geom_line(aes(x=t, y=clin_inc_0_5, color=model)) +
+  labs(x="Time",y="Clinical incidence 0-5") +
+  theme_bw()
+
+prev_plots <- ggplot(output) + 
+  geom_line(aes(x=t, y=prev_2_10, color=model)) +
+  labs(x="Time",y="Prevalence 2-10") +
+  theme_bw()
+
+plot_grid(inc_plots,prev_plots)
 ```
 
