@@ -1,6 +1,8 @@
 ---
 title: "Country-comparison"
-output: rmarkdown::html_vignette
+output: 
+  rmarkdown::html_vignette:
+    toc: true
 vignette: >
   %\VignetteIndexEntry{Validation}
   %\VignetteEngine{knitr::rmarkdown}
@@ -35,42 +37,42 @@ all_sites <- readRDS("./data/GTS2020_sites_fitted.RDS")
 
 # Old model
 
-To run the old model under generic settings, we can transform country-specific values: 
+To run the old model under generic settings, we can transform country-specific values to meet the following criteria: 
 
 1. Set exponential demography
 2. Set no population growth
 3. Set no resistance
 4. Set NULL location (no seasonality)
 
-```{r}
+```{r, fig.height = 5, fig.width = 7}
 setwd("I:/malaria_model_compare")
-# Get exponential demography
+# get exponential demography
 generic_demog <- read.table("data/exp_demog.txt")
 colnames(generic_demog) <- colnames(all_sites$demog[[1]])
 replace_demog <- function(x){
   generic_demog
 }
 
-# No population growth
+# no population growth
 standard_pop <- function(x){
   x$p = 1
   return(x)
 }
 
-# No resistance
+# no resistance
 standard_resistance <- function(x){
   x$resistance = 0
   return(x[1:18,])
 }
 
-# No seasonality
+# no seasonality
 null_seasonality <- function(x){
   x[,1] = 1
   x[,2:7] = 0
   return(x)
 }
 
-# No interventions
+# no interventions
 null_interventions <- function(x){
   x[,c(2:4,6,8:14)] = 0
   return(x)
@@ -83,9 +85,9 @@ standard_vectors <- function(x){
   return(x)
 }
 
-# Choose a single site and modify to null values to test
+# choose a single site and modify parameters to = null values
 test_site <- all_sites[1, ] %>%
-  # Alter the population, demography, resistance, etc.
+  # alter the population, demography, resistance, etc.
   mutate(pop = purrr::map(pop, standard_pop),
          demog = purrr::map(demog, replace_demog),
          resistance = purrr::map(resistance, standard_resistance),
@@ -95,17 +97,17 @@ test_site <- all_sites[1, ] %>%
          total_M = 10,
          num_runs = 1)
 
-# Run
-run_test <- purrr::pmap(test_site, run_site) %>% bind_rows()
+# run
+output1 <- purrr::pmap(test_site, run_site) %>% bind_rows()
 
-# Visualise output
-inc_plots <- ggplot(run_test) + 
-  geom_line(aes(x = t, y = clin_inc_all, col = factor(num_runs))) +
-  geom_line(aes(x = t, y = clin_inc_all_smooth, col = factor(num_runs)), lty = 2) +
-  labs(x="Time",y="Clinical incidence all",col="Number of runs") +
+# plot
+inc_plots <- ggplot(output1) + 
+  geom_line(aes(x = t, y = clin_inc_0_5)) +
+  geom_line(aes(x = t, y = clin_inc_0_5_smooth), lty = 2) +
+  labs(x="Time",y="Clinical incidence 0-5") +
   theme_bw()
 
-prev_plots <- ggplot(run_test) + 
+prev_plots <- ggplot(output1) + 
   geom_line(aes(x = t, y = prev_2_10)) +
   geom_line(aes(x = t, y = prev_2_10_smooth), lty = 2) +
   labs(x="Time",y="Prevalence 2-10") +
@@ -117,8 +119,9 @@ plot_grid(inc_plots,prev_plots)
 
 # New model
 
-```{r}
+```{r, fig.height = 5, fig.width = 7}
 year <- 365
+warmup <- 10 * year
 sim_length <- 19 * year
 population <- 1000
 
@@ -127,24 +130,28 @@ params <- malariasimulation::get_parameters(
     human_population = population,
     individual_mosquitoes = FALSE,
     n_heterogeneity_groups = 5,
+    model_seasonality = F,
+    total_M = 10 * population,
     clinical_incidence_rendering_min_ages = 0,
-    clinical_incidence_rendering_max_ages = 5 * year,
-    model_seasonality = F
+    clinical_incidence_rendering_max_ages = 5 * year
   )
 )
 
-params <- malariasimulation::set_equilibrium(params, init_EIR=10)
+output2 <- malariasimulation::run_simulation(sim_length, params) %>% 
+  mutate(t=timestep/365+2000) %>% # assigning year
+  group_by(grp=rep(row_number(), length.out=n(), each=30)) %>% # summarize by month
+  summarize(t=mean(t),
+         prev_2_10=mean(pv_730_3650,na.rm=T),
+         clin_inc_0_5=mean(clin_inc_0_1825,na.rm=T))
 
-output <- malariasimulation::run_simulation(sim_length, params)
-
-# Visualise output
-inc_plots <- ggplot(output) + 
-  geom_line(aes(x = timestep, y = clin_inc_0_1825)) +
+# plot
+inc_plots <- ggplot(output2) + 
+  geom_line(aes(x = t, y = clin_inc_0_5)) +
   labs(x="Time",y="Clinical incidence 0-5") +
   theme_bw()
 
-prev_plots <- ggplot(output) + 
-  geom_line(aes(x = timestep, y = pv_730_3650)) +
+prev_plots <- ggplot(output2) + 
+  geom_line(aes(x = t, y = prev_2_10)) +
   labs(x="Time",y="Prevalence 2-10") +
   theme_bw()
 
@@ -160,55 +167,232 @@ Now try turning interventions on/off one at a time:
 * bednets
 * IRS
 * SMC
+* MDA
 * RTS,S
 
 We will assess changes in prevalence and cumulative incidence for the whole population and for children (prev 2-10 years, CI 0-5 years)
 
 * new model with individual mosquitoes turned on and off
 
-```{r, message=FALSE}
-#simparams <- set_drugs(simparams, list(AL_params, DHA_PQP_params))
-#template$interventions[[1]]$smc <- 0 # etc.
-
-# Treatment
+```{r, fig.height = 5, fig.width = 8, message=FALSE}
 # old
-test_site <- test_site %>%
-  mutate(interventions = purrr::map(interventions, null_interventions))
-
-output1 <- purrr::pmap(test_site, run_site) %>% bind_rows() %>% mutate(model="mlgts")
+output1 <- output1 %>% mutate(model="mlgts")
 
 # new
-params <- malariasimulation::get_parameters(
-  list(
-    human_population = population,
-    individual_mosquitoes = FALSE,
-    n_heterogeneity_groups = 5,
-    clinical_incidence_rendering_min_ages = 0,
-    clinical_incidence_rendering_max_ages = 5 * year,
-    model_seasonality = F
-  )
-)
-params <- malariasimulation::set_equilibrium(params, init_EIR=10)
-output2 <- malariasimulation::run_simulation(sim_length, params) %>% 
-  mutate(t=timestep/365+2000,
-         prev_2_10=pv_730_3650,
-         clin_inc_0_5=clin_inc_0_1825,
-         model="malariasimulation")
+output2 <- output2 %>%
+  mutate(model="malariasimulation")
 
-output <- full_join(output1,output2) %>%
+# join old and new model results into a single data set
+output_orig <- full_join(output1,output2) %>%
   dplyr::select(t, prev_2_10, clin_inc_0_5, model)
 
-# Plot
-inc_plots <- ggplot(output) + 
+# plot
+inc_plots <- ggplot(output_orig) + 
   geom_line(aes(x=t, y=clin_inc_0_5, color=model)) +
   labs(x="Time",y="Clinical incidence 0-5") +
   theme_bw()
 
-prev_plots <- ggplot(output) + 
+prev_plots <- ggplot(output_orig) + 
   geom_line(aes(x=t, y=prev_2_10, color=model)) +
   labs(x="Time",y="Prevalence 2-10") +
   theme_bw()
 
 plot_grid(inc_plots,prev_plots)
+```
+
+## Treatment
+```{r, fig.height = 5, fig.width = 8, message=FALSE}
+# old
+test_site2 <- test_site 
+test_site2$interventions[[1]]$tx <- c(rep(0,4),rep(0.8,15))
+test_site2$interventions[[1]]$prop_act <- c(rep(0,4),rep(1,15))
+
+outputA <- purrr::pmap(test_site2, run_site) %>% bind_rows() %>% mutate(model="mlgts")
+  
+# new
+params2 <- params %>% 
+  set_drugs(list(AL_params, SP_AQ_params, DHA_PQP_params)) %>% 
+  set_clinical_treatment(drug=1,time=5*year,coverage=0.8)
+
+run_nmodel <- function(setparams){
+  run_simulation(sim_length, setparams) %>% 
+  mutate(t=timestep/365+2000) %>% # assigning year
+  group_by(grp=rep(row_number(), length.out=n(), each=30)) %>% # summarize by month
+  summarize(t=mean(t),
+         prev_2_10=mean(pv_730_3650,na.rm=T),
+         clin_inc_0_5=mean(clin_inc_0_1825,na.rm=T),
+         model="malariasimulation")
+}
+
+outputB <- run_nmodel(params2) 
+  
+# join old and new model results into a single data set
+output <- full_join(outputA,outputB) %>%
+  dplyr::select(t, prev_2_10, clin_inc_0_5, model)
+
+# plot
+inc_plots <- function(data){
+  ggplot(data) + 
+  geom_line(aes(x=t, y=clin_inc_0_5, color=model)) +
+  geom_line(data=output_orig,aes(x=t, y=clin_inc_0_5, color=model),lty=2) +
+  labs(x="Time",y="Clinical incidence 0-5") +
+  theme_bw()
+}
+prev_plots <- function(data){
+  ggplot(data) + 
+  geom_line(aes(x=t, y=prev_2_10, color=model)) +
+  geom_line(data=output_orig,aes(x=t, y=prev_2_10, color=model),lty=2) +
+  labs(x="Time",y="Prevalence 2-10") +
+  theme_bw()
+}
+
+plot_grid(inc_plots(output),prev_plots(output))
+```
+
+## Bednets
+```{r, fig.height = 5, fig.width = 8, message=FALSE}
+# old
+test_site2 <- test_site 
+test_site2$interventions[[1]]$llin <- c(rep(0,4),rep(0.8,15))
+test_site2$interventions[[1]]$net_type <- c(rep("pyrethroid",19))
+
+outputA <- purrr::pmap(test_site2, run_site) %>% bind_rows() %>% mutate(model="mlgts")
+
+# new
+params2 <- params %>% 
+  set_bednets(time=5*year,coverage=0.8,retention=0.9)
+
+outputB <- run_nmodel(params2) 
+
+# join old and new model results into a single data set
+output <- full_join(outputA,outputB) %>%
+  dplyr::select(t, prev_2_10, clin_inc_0_5, model)
+
+# plot
+plot_grid(inc_plots(output),prev_plots(output))
+```
+
+## IRS
+```{r, fig.height = 5, fig.width = 8, message=FALSE}
+# old
+test_site2 <- test_site 
+test_site2$interventions[[1]]$irs <- c(rep(0,4),rep(0.8,15))
+test_site2$interventions[[1]]$irs_compound <- c(rep("actellic",19))
+# actellic vs. ddts
+test_site2$interventions[[1]]$irs_rounds <- c(rep(0,4),rep(1,15))
+
+outputA <- purrr::pmap(test_site2, run_site) %>% bind_rows() %>% mutate(model="mlgts")
+
+# new
+params2 <- params %>% 
+  set_spraying(time=5*year,coverage=0.8)
+
+outputB <- run_nmodel(params2) 
+
+# join old and new model results into a single data set
+output <- full_join(outputA,outputB) %>%
+  dplyr::select(t, prev_2_10, clin_inc_0_5, model)
+
+# plot
+plot_grid(inc_plots(output),prev_plots(output))
+```
+
+## SMC
+```{r, fig.height = 5, fig.width = 8, message=FALSE}
+# old
+test_site2 <- test_site 
+test_site2$interventions[[1]]$smc <- c(rep(0,4),rep(0.8,15))
+test_site2$interventions[[1]]$smc_rounds <- c(rep(0,4),rep(1,15))
+# turn on seasonality
+
+outputA <- purrr::pmap(test_site2, run_site) %>% bind_rows() %>% mutate(model="mlgts")
+
+# new
+params2 <- params %>% 
+   set_drugs(list(AL_params, SP_AQ_params, DHA_PQP_params)) %>%
+  set_smc(drug=1,time=5*year,coverage=0.8,min_age=0,max_age=100)
+
+outputB <- run_nmodel(params2) 
+
+# join old and new model results into a single data set
+output <- full_join(outputA,outputB) %>%
+  dplyr::select(t, prev_2_10, clin_inc_0_5, model)
+
+# plot
+plot_grid(inc_plots(output),prev_plots(output))
+```
+
+## MDA
+```{r, fig.height = 5, fig.width = 8, message=FALSE}
+# old
+test_site2 <- test_site 
+# no MDA setting
+outputA <- purrr::pmap(test_site2, run_site) %>% bind_rows() %>% mutate(model="mlgts")
+
+# new
+params2 <- params %>% 
+  set_drugs(list(AL_params, SP_AQ_params, DHA_PQP_params)) %>%
+  set_mda(drug=1,time=5*year,coverage=0.8,min_age=0,max_age=100)
+
+outputB <- run_nmodel(params2) 
+
+# join old and new model results into a single data set
+output <- full_join(outputA,outputB) %>%
+  dplyr::select(t, prev_2_10, clin_inc_0_5, model)
+
+# plot
+plot_grid(inc_plots(output),prev_plots(output))
+```
+
+## RTS,S
+```{r, fig.height = 5, fig.width = 8, message=FALSE}
+# old
+test_site2 <- test_site 
+test_site2$interventions[[1]]$rtss <- c(rep(0,4),rep(0.8,15))
+outputA <- purrr::pmap(test_site2, run_site) %>% bind_rows() %>% mutate(model="mlgts")
+
+# new
+# new
+params2 <- params %>% 
+  set_rtss(time=5*year,coverage=0.8,min_ages=0,max_ages=100,boosters=10*year ,booster_coverage=0)
+# can also set booster
+
+outputB <- run_nmodel(params2) 
+
+# join old and new model results into a single data set
+output <- full_join(outputA,outputB) %>%
+  dplyr::select(t, prev_2_10, clin_inc_0_5, model)
+
+# plot
+plot_grid(inc_plots(output),prev_plots(output))
+```
+
+## Individual mosquitoes
+```{r, fig.height = 5, fig.width = 8, message=FALSE}
+# old
+test_site2 <- test_site # no change to old model
+outputA <- purrr::pmap(test_site2, run_site) %>% bind_rows() %>% mutate(model="mlgts")
+
+# new
+params2 <- get_parameters(
+  list(
+    human_population = population,
+    individual_mosquitoes = TRUE,
+    n_heterogeneity_groups = 5,
+    model_seasonality = F,
+    total_M = 10 * population,
+    clinical_incidence_rendering_min_ages = 0,
+    clinical_incidence_rendering_max_ages = 5 * year
+  )
+)
+
+outputB <- run_nmodel(params2) 
+
+# join old and new model results into a single data set
+output <- full_join(outputA,outputB) %>%
+  dplyr::select(t, prev_2_10, clin_inc_0_5, model)
+
+# plot
+plot_grid(inc_plots(output),prev_plots(output))
 ```
 
