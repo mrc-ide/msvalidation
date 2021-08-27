@@ -30,12 +30,16 @@ library(didehpc)
 # if mlgts has not been previously installed, see the directions in the DIDE drive: 
 # /malaria_model_compare/comparisons_getting_started.R
 # here, I: = DIDE shared drive
-knitr::opts_knit$set(root.dir="Z:/malaria_model_compare")
-setwd("Z:/malaria_model_compare")
-source("./R/run_site.R")
+compare_dir = 'I:/malaria_model_compare'
+```
+
+Lets load some helper scripts and data first
+
+```{r}
+source(file.path(compare_dir, "R", "run_site.R"))
 
 # load all site file data (do not share)
-all_sites <- readRDS("./data/GTS2020_sites_fitted.RDS")
+all_sites <- readRDS(file.path(compare_dir, "data", "GTS2020_sites_fitted.RDS"))
 ```
 
 # Old model
@@ -50,10 +54,8 @@ To run the old model under generic settings, we can transform country-specific v
 We can then plot annualized clinical incidence (0-5 years) and prevalence (2-10 years) across time. In the plots below, solid lines indicate exact model estimates and dashed lines indicate smoothed estimates.
 
 ```{r, fig.height = 5, fig.width = 7}
-setwd("Z:/malaria_model_compare")
-
 # get demography
-generic_demog <- read.table("data/flat_demog.txt")
+generic_demog <- read.table(file.path(compare_dir, "data", "flat_demog.txt"))
 colnames(generic_demog) <- colnames(all_sites$demog[[1]])
 replace_demog <- function(x){
   generic_demog
