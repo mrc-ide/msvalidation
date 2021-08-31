@@ -18,22 +18,20 @@ knitr::opts_chunk$set(
 
 # Set-up
 
-Let's begin by installing the libraries **mlgts** (old model) and **malariasimulation** (new model).
+Let's begin by installing the library **malariasimulation**.
 
 ```{r setup}
 suppressPackageStartupMessages(library(tidyverse))
 suppressPackageStartupMessages(library(cowplot))
 library(mlgts)
 library(malariasimulation)
-library(didehpc)
 
-# if mlgts has not been previously installed, see the directions in the DIDE drive: 
-# /malaria_model_compare/comparisons_getting_started.R
-# here, I: = DIDE shared drive
-compare_dir = 'I:/malaria_model_compare'
+compare_dir = 'M:/malaria_model_compare'
 ```
 
-Lets load some helper scripts and data first
+<br> 
+
+Now let's import comparison data from comparable old model runs from the framework described in [Winskill et al. 2017](https://journals.plos.org/plosmedicine/article?id=10.1371/journal.pmed.1002448).
 
 ```{r}
 source(file.path(compare_dir, "R", "run_site.R"))
@@ -41,6 +39,8 @@ source(file.path(compare_dir, "R", "run_site.R"))
 # load all site file data (do not share)
 all_sites <- readRDS(file.path(compare_dir, "data", "GTS2020_sites_fitted.RDS"))
 ```
+
+<br> 
 
 # Old model
 
@@ -125,13 +125,15 @@ plot_grid(inc_plots,prev_plots)
 
 ```
 
+<br> 
+
 # New model
 
-To run the new model under generic settings, we can start with the default parameters included in the malariasimulation package where all interventions are turned off. We can then set a run time, population, mosquito density, etc. to match our old model stipulations above.
+To run the new model under generic settings, we can start with the default parameters included in the **malariasimulation** package where all interventions are turned off. We can then set a run time, population, mosquito density, etc. to match our old model stipulations above.
 
 ```{r, fig.height = 5, fig.width = 7}
 year <- 365
-warmup <- 10 * year # not used for now
+warmup <- 5 * year # not used for now
 sim_length <- 19 * year
 population <- 10000 # match run_site() documentation
 
@@ -229,7 +231,10 @@ prev_plots <- ggplot(output_orig) +
 plot_grid(inc_plots,prev_plots)
 ```
 
+<br> 
+
 ## Treatment
+
 ```{r, fig.height = 5, fig.width = 8, message=FALSE}
 # old
 test_site2 <- test_site 
@@ -268,7 +273,10 @@ prev_plots <- function(data){
 plot_grid(inc_plots(output),prev_plots(output))
 ```
 
+<br> 
+
 ## Bednets
+
 ```{r, fig.height = 5, fig.width = 8, message=FALSE}
 # old
 test_site2 <- test_site 
@@ -280,8 +288,8 @@ outputA <- purrr::pmap(test_site2, run_site) %>% bind_rows() %>% mutate(model="m
 # new
 IM <- params %>% 
   set_bednets(
-    time=5*year,
-    coverage=0.8,
+    timesteps=seq(5,19,1)*year,
+    coverages=rep(0.8,15),
     retention = 5 * year,
     dn0 = matrix(.533, nrow=1, ncol=1),
     rn = matrix(.56, nrow=1, ncol=1),
@@ -299,7 +307,10 @@ output <- full_join(outputA,outputB) %>%
 plot_grid(inc_plots(output),prev_plots(output))
 ```
 
+<br> 
+
 ## IRS
+
 ```{r, fig.height = 5, fig.width = 8, message=FALSE}
 # old
 test_site2 <- test_site 
@@ -313,8 +324,8 @@ outputA <- purrr::pmap(test_site2, run_site) %>% bind_rows() %>% mutate(model="m
 # new
 IM <- params %>% 
   set_spraying(
-    time=5*year,
-    coverage=0.8,
+    timesteps=seq(5,19,1)*year,
+    coverages=rep(0.8,15),
     ls_theta = matrix(2.025, nrow=1, ncol=1),
     ls_gamma = matrix(-0.009, nrow=1, ncol=1),
     ks_theta = matrix(-2.222, nrow=1, ncol=1),
@@ -333,7 +344,10 @@ output <- full_join(outputA,outputB) %>%
 plot_grid(inc_plots(output),prev_plots(output))
 ```
 
+<br> 
+
 ## SMC
+
 ```{r, fig.height = 5, fig.width = 8, message=FALSE}
 # old
 test_site2 <- test_site 
@@ -346,7 +360,7 @@ outputA <- purrr::pmap(test_site2, run_site) %>% bind_rows() %>% mutate(model="m
 # new
 IM <- params %>% 
    set_drugs(list(AL_params, SP_AQ_params, DHA_PQP_params)) %>%
-   set_smc(drug=1,time=5*year,coverage=0.8,min_age=0,max_age=100)
+   set_smc(drug=1,timesteps=seq(5,19,1)*year,coverages=rep(0.8,15),min_age=0,max_age=100)
 
 outputB <- run_nmodel(IM) %>% mutate(model="malariasimulation")
 
@@ -358,7 +372,10 @@ output <- full_join(outputA,outputB) %>%
 plot_grid(inc_plots(output),prev_plots(output))
 ```
 
+<br> 
+
 ## MDA
+
 ```{r, fig.height = 5, fig.width = 8, message=FALSE}
 # old
 test_site2 <- test_site 
@@ -380,7 +397,10 @@ output <- full_join(outputA,outputB) %>%
 plot_grid(inc_plots(output),prev_plots(output))
 ```
 
+<br> 
+
 ## RTS,S
+
 ```{r, fig.height = 5, fig.width = 8, message=FALSE}
 # old
 test_site2 <- test_site 
