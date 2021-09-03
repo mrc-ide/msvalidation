@@ -20,11 +20,13 @@ knitr::opts_chunk$set(
 
 Let's begin by installing the library **malariasimulation**.
 
-```{r setup}
+```{r setup, warning=FALSE, message=FALSE}
 suppressPackageStartupMessages(library(tidyverse))
 suppressPackageStartupMessages(library(cowplot))
 library(mlgts)
 library(malariasimulation)
+
+# remotes::install_github("mrc-ide/malariasimulation@dev", force=T)
 
 compare_dir = 'M:/malaria_model_compare'
 ```
@@ -53,7 +55,7 @@ To run the old model under generic settings, we can transform country-specific v
 
 We can then plot annualized clinical incidence (0-5 years) and prevalence (2-10 years) across time. In the plots below, solid lines indicate exact model estimates and dashed lines indicate smoothed estimates.
 
-```{r, fig.height = 5, fig.width = 7}
+```{r, fig.height = 5, fig.width = 7, warning=FALSE, message=FALSE}
 # get demography
 generic_demog <- read.table(file.path(compare_dir, "data", "flat_demog.txt"))
 colnames(generic_demog) <- colnames(all_sites$demog[[1]])
@@ -131,9 +133,9 @@ plot_grid(inc_plots,prev_plots)
 
 To run the new model under generic settings, we can start with the default parameters included in the **malariasimulation** package where all interventions are turned off. We can then set a run time, population, mosquito density, etc. to match our old model stipulations above.
 
-```{r, fig.height = 5, fig.width = 7}
+```{r, fig.height = 5, fig.width = 7, warning=FALSE, message=FALSE}
 year <- 365
-warmup <- 5 * year # not used for now
+warmup <- 5 * year
 sim_length <- 19 * year
 population <- 10000 # match run_site() documentation
 
@@ -161,17 +163,17 @@ params <- malariasimulation::set_species(
 )
 
 run_nmodel <- function(setparams){
-  run_simulation(sim_length, setparams) %>% 
-  mutate(t=timestep/365+2000, # assigning year
+  run_simulation(warmup + sim_length, setparams) %>% 
+  mutate(t=timestep/365 + 1995, # assigning year
           # filling in NAs with 0
-         clin_inc_0_1825=case_when(!is.na(n_inc_clinical_0_1825)~n_inc_clinical_0_1825/n_0_1825,
-                                   is.na(n_inc_clinical_0_1825)~0),
+         clin_inc_0_1825=case_when(!is.na(n_inc_clinical_0_1825)~n_inc_clinical_0_1825/n_0_1825, is.na(n_inc_clinical_0_1825)~0),
          pv_730_3650=n_detect_730_3650/n_730_3650
          ) %>% 
   group_by(grp=rep(row_number(), length.out=n(), each=30)) %>% # summarize by month
   summarize(t=mean(t),
          prev_2_10=mean(pv_730_3650,na.rm=T),
-         clin_inc_0_5=mean(clin_inc_0_1825,na.rm=T)*year)
+         clin_inc_0_5=mean(clin_inc_0_1825,na.rm=T)*year) %>%
+  filter(t >= 2000)
 }
 
 output2 <- run_nmodel(params)
@@ -191,6 +193,8 @@ plot_grid(inc_plots,prev_plots)
 
 ```
 
+<br>
+
 # Comparison
 
 Now try turning interventions on/off one at a time: 
@@ -205,7 +209,7 @@ Now try turning interventions on/off one at a time:
 
 We will assess changes in prevalence and cumulative incidence for each intervention. Solid lines represent model outputs with interventions, and dashed lines represent model outputs without any interventions.
 
-```{r, fig.height = 5, fig.width = 8, message=FALSE}
+```{r, fig.height = 5, fig.width = 8, warning=FALSE, message=FALSE}
 # old
 output1 <- output1 %>% mutate(model="mlgts")
 
@@ -235,7 +239,9 @@ plot_grid(inc_plots,prev_plots)
 
 ## Treatment
 
-```{r, fig.height = 5, fig.width = 8, message=FALSE}
+Need to modify malariasimulation so that `n_inc_clinical` includes everyone in the age range who was treated.
+
+```{r, fig.height = 5, fig.width = 8, warning=FALSE, message=FALSE}
 # old
 test_site2 <- test_site 
 test_site2$interventions[[1]]$tx <- c(rep(0,4),rep(0.8,15))
@@ -246,7 +252,7 @@ outputA <- purrr::pmap(test_site2, run_site) %>% bind_rows() %>% mutate(model="m
 # new
 IM <- params %>% 
   set_drugs(list(AL_params, SP_AQ_params, DHA_PQP_params)) %>% 
-  set_clinical_treatment(drug=1,time=5*year,coverage=0.8)
+  set_clinical_treatment(drug=2,time=5*year+warmup,coverage=0.8)
 
 outputB <- run_nmodel(IM) %>% mutate(model="malariasimulation")
   
@@ -260,6 +266,7 @@ inc_plots <- function(data){
   geom_line(aes(x=t, y=clin_inc_0_5, color=model)) +
   geom_line(data=output_orig,aes(x=t, y=clin_inc_0_5, color=model),lty=2) +
   labs(x="Time",y="Clinical incidence 0-5") +
+  scale_y_continuous(limits=c(0,1.25)) + 
   theme_bw()
 }
 prev_plots <- function(data){
@@ -267,6 +274,7 @@ prev_plots <- function(data){
   geom_line(aes(x=t, y=prev_2_10, color=model)) +
   geom_line(data=output_orig,aes(x=t, y=prev_2_10, color=model),lty=2) +
   labs(x="Time",y="Prevalence 2-10") +
+  scale_y_continuous(limits=c(0,0.5)) + 
   theme_bw()
 }
 
@@ -277,7 +285,7 @@ plot_grid(inc_plots(output),prev_plots(output))
 
 ## Bednets
 
-```{r, fig.height = 5, fig.width = 8, message=FALSE}
+```{r, fig.height = 5, fig.width = 8, warning=FALSE, message=FALSE}
 # old
 test_site2 <- test_site 
 test_site2$interventions[[1]]$llin <- c(rep(0,4),rep(0.8,15))
@@ -288,13 +296,13 @@ outputA <- purrr::pmap(test_site2, run_site) %>% bind_rows() %>% mutate(model="m
 # new
 IM <- params %>% 
   set_bednets(
-    timesteps=seq(5,19,1)*year,
+    timesteps=seq(5,19,1)*year+warmup,
     coverages=rep(0.8,15),
     retention = 5 * year,
-    dn0 = matrix(.533, nrow=1, ncol=1),
-    rn = matrix(.56, nrow=1, ncol=1),
-    rnm = matrix(.24, nrow=1, ncol=1),
-    gamman = 2.64
+    dn0 = matrix(rep(.41,15), nrow=15, ncol=1), # or .533
+    rn = matrix(rep(.56,15), nrow=15, ncol=1),
+    rnm = matrix(rep(.24,15), nrow=15, ncol=1),
+    gamman = rep((5*year)/2,15) # or 963.6
   )
 
 outputB <- run_nmodel(IM) %>% mutate(model="malariasimulation")
@@ -311,12 +319,13 @@ plot_grid(inc_plots(output),prev_plots(output))
 
 ## IRS
 
-```{r, fig.height = 5, fig.width = 8, message=FALSE}
+```{r, fig.height = 5, fig.width = 8, warning=FALSE, message=FALSE}
 # old
 test_site2 <- test_site 
 test_site2$interventions[[1]]$irs <- c(rep(0,4),rep(0.8,15))
 test_site2$interventions[[1]]$irs_compound <- c(rep("actellic",19))
-# actellic vs. ddts
+# actellic: c(2.024412039,  -0.008887407, -2.222632837, 0.008469928, 1.231733302, -0.008887407)
+
 test_site2$interventions[[1]]$irs_rounds <- c(rep(0,4),rep(1,15))
 
 outputA <- purrr::pmap(test_site2, run_site) %>% bind_rows() %>% mutate(model="mlgts")
@@ -324,14 +333,14 @@ outputA <- purrr::pmap(test_site2, run_site) %>% bind_rows() %>% mutate(model="m
 # new
 IM <- params %>% 
   set_spraying(
-    timesteps=seq(5,19,1)*year,
+    timesteps=seq(5,19,1)*year+warmup,
     coverages=rep(0.8,15),
-    ls_theta = matrix(2.025, nrow=1, ncol=1),
-    ls_gamma = matrix(-0.009, nrow=1, ncol=1),
-    ks_theta = matrix(-2.222, nrow=1, ncol=1),
-    ks_gamma = matrix(0.008, nrow=1, ncol=1),
-    ms_theta = matrix(-1.232, nrow=1, ncol=1),
-    ms_gamma = matrix(-0.009, nrow=1, ncol=1)
+    ls_theta = matrix(rep(2.025,15), nrow=15, ncol=1),
+    ls_gamma = matrix(rep(-0.009,15), nrow=15, ncol=1),
+    ks_theta = matrix(rep(-2.222,15), nrow=15, ncol=1),
+    ks_gamma = matrix(rep(0.008,15), nrow=15, ncol=1),
+    ms_theta = matrix(rep(-1.232,15), nrow=15, ncol=1),
+    ms_gamma = matrix(rep(-0.009,15), nrow=15, ncol=1)
   )
 
 outputB <- run_nmodel(IM) %>% mutate(model="malariasimulation")
@@ -348,7 +357,7 @@ plot_grid(inc_plots(output),prev_plots(output))
 
 ## SMC
 
-```{r, fig.height = 5, fig.width = 8, message=FALSE}
+```{r, fig.height = 5, fig.width = 8, warning=FALSE, message=FALSE}
 # old
 test_site2 <- test_site 
 test_site2$interventions[[1]]$smc <- c(rep(0,4),rep(0.8,15))
@@ -360,7 +369,11 @@ outputA <- purrr::pmap(test_site2, run_site) %>% bind_rows() %>% mutate(model="m
 # new
 IM <- params %>% 
    set_drugs(list(AL_params, SP_AQ_params, DHA_PQP_params)) %>%
-   set_smc(drug=1,timesteps=seq(5,19,1)*year,coverages=rep(0.8,15),min_age=0,max_age=100)
+   set_smc(drug=1,
+           timesteps=seq(5,19,1)*year+warmup,
+           coverages=rep(0.8,15),
+           min_age=0.5*year,
+           max_age=5*year)
 
 outputB <- run_nmodel(IM) %>% mutate(model="malariasimulation")
 
@@ -376,7 +389,9 @@ plot_grid(inc_plots(output),prev_plots(output))
 
 ## MDA
 
-```{r, fig.height = 5, fig.width = 8, message=FALSE}
+* there is no way to set MDA as an intervention in `mlgts`.
+
+```{r, fig.height = 5, fig.width = 8, warning=FALSE, message=FALSE}
 # old
 test_site2 <- test_site 
 # no MDA setting
@@ -385,7 +400,7 @@ outputA <- purrr::pmap(test_site2, run_site) %>% bind_rows() %>% mutate(model="m
 # new
 IM <- params %>% 
   set_drugs(list(AL_params, SP_AQ_params, DHA_PQP_params)) %>%
-  set_mda(drug=1,time=5*year,coverage=0.8,min_age=0,max_age=100)
+  set_mda(drug=1,time=5*year+warmup,coverage=0.8,min_age=0.5*year,max_age=100*year)
 
 outputB <- run_nmodel(IM) %>% mutate(model="malariasimulation")
 
@@ -401,7 +416,7 @@ plot_grid(inc_plots(output),prev_plots(output))
 
 ## RTS,S
 
-```{r, fig.height = 5, fig.width = 8, message=FALSE}
+```{r, fig.height = 5, fig.width = 8, warning=FALSE, message=FALSE}
 # old
 test_site2 <- test_site 
 test_site2$interventions[[1]]$rtss <- c(rep(0,4),rep(0.8,15))
@@ -409,16 +424,16 @@ outputA <- purrr::pmap(test_site2, run_site) %>% bind_rows() %>% mutate(model="m
 
 # new
 IM <- params %>% 
-  set_mass_rtss(
-    time=5*year,
+  set_rtss_epi(
+    start=5*year+warmup,
+    end = 19*year+warmup,
     coverage=0.8,
-    min_ages=0,
-    max_ages=100,
-    boosters=10*year,
-    booster_coverage=0,
-    min_wait = 0
+    age=0.5*year,
+    min_wait = 0,
+    boosters=18*30,
+    booster_coverage=0.8,
+    seasonal_boosters = FALSE
   )
-# can also set booster
 
 outputB <- run_nmodel(IM) %>% mutate(model="malariasimulation")
 
