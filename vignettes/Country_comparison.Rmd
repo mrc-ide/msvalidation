@@ -239,8 +239,6 @@ plot_grid(inc_plots,prev_plots)
 
 ## Treatment
 
-Need to modify malariasimulation so that `n_inc_clinical` includes everyone in the age range who was treated.
-
 ```{r, fig.height = 5, fig.width = 8, warning=FALSE, message=FALSE}
 # old
 test_site2 <- test_site 
@@ -292,6 +290,7 @@ test_site2$interventions[[1]]$llin <- c(rep(0,4),rep(0.8,15))
 test_site2$interventions[[1]]$net_type <- c(rep("pyrethroid",19))
 
 outputA <- purrr::pmap(test_site2, run_site) %>% bind_rows() %>% mutate(model="mlgts")
+# pyrethroid params are mlgts:::r_itn(0, 0)
 
 # new
 IM <- params %>% 
@@ -299,10 +298,10 @@ IM <- params %>%
     timesteps=seq(5,19,1)*year+warmup,
     coverages=rep(0.8,15),
     retention = 5 * year,
-    dn0 = matrix(rep(.41,15), nrow=15, ncol=1), # or .533
-    rn = matrix(rep(.56,15), nrow=15, ncol=1),
+    dn0 = matrix(rep(0.3885647, 15), nrow=15, ncol=1), # or .533
+    rn = matrix(rep(0.5320518, 15), nrow=15, ncol=1),
     rnm = matrix(rep(.24,15), nrow=15, ncol=1),
-    gamman = rep((5*year)/2,15) # or 963.6
+    gamman = rep(2.64*year,15) # or 963.6
   )
 
 outputB <- run_nmodel(IM) %>% mutate(model="malariasimulation")
@@ -324,7 +323,8 @@ plot_grid(inc_plots(output),prev_plots(output))
 test_site2 <- test_site 
 test_site2$interventions[[1]]$irs <- c(rep(0,4),rep(0.8,15))
 test_site2$interventions[[1]]$irs_compound <- c(rep("actellic",19))
-# actellic: c(2.024412039,  -0.008887407, -2.222632837, 0.008469928, 1.231733302, -0.008887407)
+
+# params from mlgts:::r_irs(2, 0)
 
 test_site2$interventions[[1]]$irs_rounds <- c(rep(0,4),rep(1,15))
 
@@ -335,12 +335,12 @@ IM <- params %>%
   set_spraying(
     timesteps=seq(5,19,1)*year+warmup,
     coverages=rep(0.8,15),
-    ls_theta = matrix(rep(2.025,15), nrow=15, ncol=1),
-    ls_gamma = matrix(rep(-0.009,15), nrow=15, ncol=1),
-    ks_theta = matrix(rep(-2.222,15), nrow=15, ncol=1),
-    ks_gamma = matrix(rep(0.008,15), nrow=15, ncol=1),
-    ms_theta = matrix(rep(-1.232,15), nrow=15, ncol=1),
-    ms_gamma = matrix(rep(-0.009,15), nrow=15, ncol=1)
+    ls_theta = matrix(rep(2.024412, 15), nrow=15, ncol=1),
+    ls_gamma = matrix(rep(-0.008887407,15), nrow=15, ncol=1),
+    ks_theta = matrix(rep(-2.222633,15), nrow=15, ncol=1),
+    ks_gamma = matrix(rep(0.008469928,15), nrow=15, ncol=1),
+    ms_theta = matrix(rep(1.231733,15), nrow=15, ncol=1),
+    ms_gamma = matrix(rep(-0.008887407,15), nrow=15, ncol=1)
   )
 
 outputB <- run_nmodel(IM) %>% mutate(model="malariasimulation")
@@ -385,34 +385,7 @@ output <- full_join(outputA,outputB) %>%
 plot_grid(inc_plots(output),prev_plots(output))
 ```
 
-<br> 
-
-## MDA
-
-* there is no way to set MDA as an intervention in `mlgts`.
-
-```{r, fig.height = 5, fig.width = 8, warning=FALSE, message=FALSE}
-# old
-test_site2 <- test_site 
-# no MDA setting
-outputA <- purrr::pmap(test_site2, run_site) %>% bind_rows() %>% mutate(model="mlgts")
-
-# new
-IM <- params %>% 
-  set_drugs(list(AL_params, SP_AQ_params, DHA_PQP_params)) %>%
-  set_mda(drug=1,time=5*year+warmup,coverage=0.8,min_age=0.5*year,max_age=100*year)
-
-outputB <- run_nmodel(IM) %>% mutate(model="malariasimulation")
-
-# join old and new model results into a single data set
-output <- full_join(outputA,outputB) %>%
-  dplyr::select(t, prev_2_10, clin_inc_0_5, model)
-
-# plot
-plot_grid(inc_plots(output),prev_plots(output))
-```
-
-<br> 
+<br>
 
 ## RTS,S
 
