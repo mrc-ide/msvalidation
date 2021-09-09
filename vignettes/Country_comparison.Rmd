@@ -246,10 +246,20 @@ test_site2$interventions[[1]]$tx <- c(rep(0,4),rep(0.8,15))
 test_site2$interventions[[1]]$prop_act <- c(rep(0,4),rep(1,15))
 
 outputA <- purrr::pmap(test_site2, run_site) %>% bind_rows() %>% mutate(model="mlgts")
-  
+
+#TODO: what is the shape of SP?
+Non_ACT <- SP_AQ_params
+Non_ACT[[1]] <- 0.75 #efficacy
+
+ACT <- AL_params
+
+SMC_drug <- SP_AQ_params
+SMC_drug[[3]] <- 3.66
+SMC_drug[[4]] <- 36.63 # updated SP-AQ fits based on Gina's results
+
 # new
 IM <- params %>% 
-  set_drugs(list(AL_params, SP_AQ_params, DHA_PQP_params)) %>% 
+  set_drugs(list(Non_ACT, ACT, SMC_drug)) %>% 
   set_clinical_treatment(drug=2,time=5*year+warmup,coverage=0.8)
 
 outputB <- run_nmodel(IM) %>% mutate(model="malariasimulation")
@@ -368,7 +378,7 @@ outputA <- purrr::pmap(test_site2, run_site) %>% bind_rows() %>% mutate(model="m
 
 # new
 IM <- params %>% 
-   set_drugs(list(AL_params, SP_AQ_params, DHA_PQP_params)) %>%
+   set_drugs(list(Non_ACT, ACT, SMC_drug)) %>%
    set_smc(drug=1,
            timesteps=seq(5,19,1)*year+warmup,
            coverages=rep(0.8,15),
